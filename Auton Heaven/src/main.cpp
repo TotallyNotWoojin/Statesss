@@ -79,14 +79,14 @@ void pre_auton(void) {
 
 //task to flip out back four bar arms
 int start(){
+  frontMogo.close();
+  frontTilt1.close();
+  frontTilt2.close();
   backMogo.stop(brake);
   spike.close();
   backMogo.resetRotation();
   conveyorBelt.resetRotation();
   backMogoClamp.open();
-  frontMogo.close();
-  frontTilt1.close();
-  frontTilt2.close();
   parallelSensor.resetPosition();
   perpSensor.resetPosition();
   leftSide.resetPosition();
@@ -203,32 +203,32 @@ int start(){
 
 double driveRemainder=0;
 void drivePD(double finalDrive){
-  double drivekP=.0177;
-  double drivekD=.00037;
-  double drivekI=0.0022;
-  //double turnkP=.000;
-  //double turnkD=.0;
-  //double turnPreviousError=0;
-  //double turnFinalValue=Inertial.rotation();
+  double drivekP=.0175;
+  double drivekD=.00038;
+  double drivekI=0.0019;
+  double turnkP=.000;
+  double turnkD=.000;
+  double turnPreviousError=0;
+  double turnFinalValue=Inertial.rotation();
   parallelSensor.resetPosition();
   double driveError=0;
   double drivePreviousError=0;
-  double driveFinalValue=(finalDrive*(360/(2.75*M_PI))+driveRemainder);
+  double driveFinalValue=(finalDrive*(360/(2.75*M_PI)))+driveRemainder;
   double totalError=0;
   driveError=driveFinalValue;
   while ((fabs(driveError)>=10)){
     double drivePosition=parallelSensor.position(deg);
-    //double turnPosition=Inertial.rotation();
+    double turnPosition=Inertial.rotation();
     //proportional
     driveError=driveFinalValue-drivePosition;
-    //double turnError=turnFinalValue-turnPosition;
+    double turnError=turnFinalValue-turnPosition;
     
     //derivative
     double driveDerivative=driveError-drivePreviousError;
-    //double turnDerivative=turnError-turnPreviousError;
+    double turnDerivative=turnError-turnPreviousError;
 
     //integral
-    if(fabs(driveError)<50){
+    if(fabs(driveError)<=46){
       totalError+=driveError;
     }
     else{
@@ -237,10 +237,10 @@ void drivePD(double finalDrive){
 
     //sets up the motor power for each side
     double driveMotorPower=driveError*drivekP+driveDerivative*drivekD+totalError*drivekI;
-    //double turnMotorPower=turnError*turnkP+turnDerivative*turnkD;
+    double turnMotorPower=turnError*turnkP+turnDerivative*turnkD;
 
-    rightSide.spin(fwd,driveMotorPower,volt);
-    leftSide.spin(fwd,driveMotorPower,volt);
+    rightSide.spin(fwd,driveMotorPower-turnMotorPower,volt);
+    leftSide.spin(fwd,driveMotorPower+turnMotorPower,volt);
     Brain.Screen.printAt(20,80,"%f",middleLeft.velocity(velocityUnits::rpm));
 
     //updates the previousErrors for the next while loop iteration for accurate derivatives
@@ -261,9 +261,9 @@ bool rightYes=true;
 //PD for accurate turns using inertial sensor
   void turnPD(double finalTurnValue){
     //turn PD tuning values
-    double turnkP=.256;
-    double turnkD=0.66;
-    double turnkI=0.108;
+    double turnkP=.25;
+    double turnkD=0.8;
+    double turnkI=0.05;
     //doesn't reset value to use absolute positioning for more accurate positioning
     //sets up while loop condition
     double turnError=finalTurnValue;
@@ -282,13 +282,13 @@ bool rightYes=true;
         turnError=finalTurnValue;
         toggler=0;
       }
-      double turnPosition=Inertial.yaw();
+      double turnPosition=Inertial.rotation();
 
       //proportional
       turnError=finalTurnValue-turnPosition;
       //derivative
       double turnDerivative=turnError-previousTurnError;
-      if(fabs(turnError)<5){
+      if(fabs(turnError)<7){
         totalError+=turnError;
       }
       //sets up the motor power for each side
@@ -298,8 +298,14 @@ bool rightYes=true;
       if(leftYes){
         leftSide.spin(fwd,turnMotorPower,volt);
       }
+      else{
+        leftSide.stop(brake);
+      }
       if(rightYes){
         rightSide.spin(reverse,turnMotorPower,volt);
+      }
+      else{
+        rightSide.stop(brake);
       }
 
       //updates the previousError for the next while loop iteration for accurate derivatives
@@ -310,8 +316,8 @@ bool rightYes=true;
       wait(20,msec);
     }
     //stops motors once error is within margin of error
-    leftSide.stop(brake);
-    rightSide.stop(brake);
+    leftSide.stop(hold);
+    rightSide.stop(hold);
   }
 
 // ............................................................................
@@ -357,12 +363,12 @@ void rightAutonWP(){
   Start.stop();
   backMogoClamp.close();
   backMogoLift(50, 0);
-  drivePD(23.5);
+  drivePD(22);
   turnPD(-90);
   backMogoLift(120, 0);
-  driveTrain.driveFor(fwd,25,inches,25,velocityUnits::pct);
+  drivePD(10);
   frontMogoGetter();
-  driveTrain.driveFor(reverse,4,inches,25,velocityUnits::pct);
+  drivePD(-2);
   backMogoLift(300, 0);
   ringPickUp(1);
   turnPD(-0);
@@ -376,13 +382,14 @@ void rightAutonMA(){
   drivePD(-45.1);
   Start.stop();
   backMogoClamp.close();
-  drivePD(26);
+  drivePD(25.6);
   backMogoClamp.open();
-  drivePD(7);
-  turnPD(-54);
-  driveTrain.driveFor(fwd,40,inches,30,velocityUnits::pct);
+  drivePD(5);
+  turnPD(-56);
+  drivePD(12);
+  drivePD(11);
   frontMogoGetter();
-  driveTrain.driveFor(reverse,3.5,inches,30,velocityUnits::pct);
+  drivePD(-2);
   backMogoLift(300,0);
   turnPD(35);
   ringPickUp(1);
@@ -390,8 +397,8 @@ void rightAutonMA(){
   drivePD(30);
   ringPickUp(0);
   backMogoLift(0, 0);
-  turnPD(-23);
-  drivePD(-20);
+  turnPD(-25);
+  drivePD(-25);
   backMogoClamp.close();
   drivePD(13);
 }
@@ -412,10 +419,12 @@ void rightAuton2N2(){
   turnPD(0);
   drivePD(20);
   frontMogoRelease();
-  wait(500,msec);
-  driveTrain.driveFor(reverse,10,inches,60,velocityUnits::pct);
+  backMogoLift(120,0);
+  wait(250,msec);
+  drivePD(-5);
+  wait(250,msec);
   turnPD(-90);
-  driveTrain.driveFor(fwd,23,inches,25,velocityUnits::pct);
+  drivePD(9.4);
   frontMogoGetter();
   ringPickUp(1);
   drivePD(-20);
@@ -425,124 +434,208 @@ void leftAutonWP(){
   backMogoClamp.open();
   drivePD(-35.1);
   backMogoClamp.close();
-  drivePD(19);
+  drivePD(20);
   backMogoLift(00, 1);
   backMogoClamp.open();
   drivePD(10);
-  turnPD(-37.3);
+  turnPD(-55);
   drivePD(8);
   frontMogoGetter();
   drivePD(-10);
-  turnPD(-2);
+  turnPD(10);
   drivePD(-10);
   backMogoClamp.close();
-  backMogoLift(300, 0);
-  ringPickUp(1);
-  turnPD(65);
-  driveTrain.driveFor(reverse,45,inches,30,velocityUnits::pct);
-  drivePD(20);
 }
 void auton5(){}
 void auton6(){}
-void auton7(){}
+void auton7(){
+  task Start(start);
+  Start.stop();
+  backMogoClamp.open();
+  frontMogoGetter();
+  drivePD(-11);
+  turnPD(87.5);
+  drivePD(-30.0);
+  drivePD(-13.5);
+  backMogoClamp.close();
+  backMogoLift(600, true);
+  turnPD(101.5);
+  backMogoLift(850,1);
+  ringPickUp(1);
+  drivePD(-54);
+  wait(300,msec);
+  turnPD(85);
+  drivePD(-4);
+  backMogoLift(480, 1);
+  backMogoLift(600,1);
+  backMogoClamp.open();
+  turnPD(85);
+  drivePD(9);
+  turnPD(-10);
+  backMogoLift(0, 0);
+  drivePD(-10);
+  ringPickUp(0);
+  frontMogoRelease();
+  wait(500,msec);
+  drivePD(-10);
+  turnPD(-182);
+  drivePD(9.35);
+  drivePD(8.3);
+  frontMogoGetter();
+  wait(200,msec);
+  turnPD(-183);
+  drivePD(-22);
+  drivePD(-13);
+  backMogoClamp.close();
+  backMogoLift(800,1);
+  ringPickUp(1);
+  turnPD(-220);
+  drivePD(-9);
+  turnPD(-258);
+  drivePD(-6);
+  backMogoLift(550, 1);
+  backMogoClamp.open();
+  backMogoLift(700,1);
+  drivePD(15);
+  backMogoLift(0, 0);
+  turnPD(-140);
+  wait(500,msec);
+  drivePD(-16.5);
+  backMogoClamp.close();
+  backMogoLift(800, 0);
+  ringPickUp(1);
+  drivePD(-33);
+  wait(600,msec);
+  backMogoLift(800,1);
+  turnPD(-88);
+  ringPickUp(1);
+  drivePD(-20);
+  backMogoLift(500,1);
+  wait(600,msec);
+  backMogoClamp.open();
+  backMogo.rotateTo(600,deg,10,velocityUnits::pct,false);
+  drivePD(4);
+  drivePD(5.3);
+  turnPD(-190);
+  backMogoLift(0, 0);
+  ringPickUp(0);
+  drivePD(-15);
+  frontMogoRelease();
+  wait(300,msec);
+  drivePD(-10);
+  turnPD(-13);
+  drivePD(10.75);
+  frontMogoGetter();
+  drivePD(-14.4);
+  turnPD(68);
+  drivePD(-13);
+  drivePD(-10);
+  backMogoClamp.close();
+  backMogoLift(800,0);
+  turnPD(40);
+  ringPickUp(1);
+  drivePD(-56);
+  backMogoLift(520,1);
+  backMogoLift(400,1);
+  backMogoClamp.open();
+  drivePD(10);
+  turnPD(240.5);
+  backMogoLift(0,0);
+}
 void skillAuton(){
-  // Inertial.resetRotation();
-  // task Start(start);
-  // turnPD(11);
-  // drivePD(500,500,1,100);
-  // Start.stop();
-  // drivePD(-800,-800,0,0);
-  // turnPD(109.6);
-  // drivePD(-1210,-1210,0,0);
-  // drivePD(-370,-370,0,0);
-  // backMogoClamp.close();
-  // backMogoLift(850, false);
-  // turnPD(117);
-  // ringPickUp(1);
-  // wait(200,msec);
-  // drivePD(-2335,-2335,0,0);
-  // turnPD(112);
-  // backMogoLift(450, true);
-  // backMogoClamp.open();
-  // backMogoLift(800,1);
-  // drivePD(310,310,0,0);
-  // backMogoLift(0, 0);
-  // ringPickUp(0);
-  // turnPD(0);
-  // drivePD(-490,-490,0,0);
-  // frontMogo.open();
-  // drivePD(-400,-400,0,0);
-  // turnPD(176);
-  // drivePD(665,665,1,130);
-  // drivePD(-335,-335,0,0);
-  // turnPD(217);
-  // drivePD(-1030,-1030,0,0);
-  // drivePD(-480,-480,0,0);
-  // backMogoClamp.close();
-  // backMogoLift(70, 1);
-  // drivePD(-500,-500,0,0);
-  // backMogoLift(750, 0);
-  // turnPD(253);
-  // ringPickUp(1);
-  // wait(500,msec);
-  // drivePD(-1400,-1400,0,0);
-  // backMogoLift(500, 1);
-  // wait(1500,msec);
-  // backMogoClamp.open();
-  // backMogo.rotateTo(750,deg,25,velocityUnits::pct,false);
-  // drivePD(350,350,0,0);
-  // ringPickUp(0);
-  // turnPD(180);
-  // backMogoLift(0, 0);
-  // drivePD(-650,-650,0,0);
-  // frontMogo.open();
-  // drivePD(-380,-380,0,0);
-  // turnPD(2.64);
-  // drivePD(685,685,1,130);
-  // wait(300,msec);
-  // drivePD(-875,-875,0,0);
-  // turnPD(99);
-  // drivePD(-400,-400,0,0);
-  // drivePD(-340,-340,0,0);
-  // backMogoClamp.close();
-  // backMogoLift(660, 0);
-  // turnPD(69);
-  // ringPickUp(1);
-  // drivePD(-2080,-2080,0,0);
-  // backMogoClamp.open();
-  // drivePD(330,330,0,0);
-  // turnPD(0);
-  // ringPickUp(0);
-  // backMogoLift(0, 1);
-  // drivePD(1500,1500,0,0);
-  // turnPD(50.5);
-  // drivePD(-585,-585,0,0);
-  // drivePD(-320,-320,0,0);
-  // backMogoClamp.close();
-  // backMogoLift(40,0);
-  // drivePD(600,600,0,0);
-  // turnPD(-34);
-  // backMogoLift(700, 0);
-  // ringPickUp(1);
-  // drivePD(-3300,-3300,0,0);
-  // wait(750,msec);
-  // turnPD(-110);
-  // drivePD(-570,-570,0,0);
-  // backMogoClamp.open();
-  // turnPD(-105);
-  // backMogoLift(0, 0);
-  // drivePD(2710,2710,0,0);
-  // turnPD(-175);
-  // drivePD(-600,-600,0,0);
-  //  drivePD(-400,-400,0,0);
-  // backMogoClamp.close();
-  // backMogoLift(800, 1);
-  // turnPD(-240);
-  // drivePD(-200,-200,0,0);
-  // backMogoClamp.open();
-  // drivePD(300,300,0,0);
-  // Inertial.resetRotation();
-  // turnPD(180);
+  task Start(start);
+  Start.stop();
+  backMogoClamp.open();
+  frontMogoGetter();
+  drivePD(-11);
+  turnPD(87.5);
+  drivePD(-30.0);
+  drivePD(-13.5);
+  backMogoClamp.close();
+  backMogoLift(600, true);
+  turnPD(101.5);
+  backMogoLift(850,1);
+  ringPickUp(1);
+  drivePD(-54);
+  wait(500,msec);
+  turnPD(85);
+  drivePD(-4);
+  backMogoLift(480, 1);
+  backMogoLift(600,1);
+  backMogoClamp.open();
+  turnPD(85);
+  drivePD(9);
+  turnPD(-10);
+  backMogoLift(0, 0);
+  drivePD(-10);
+  ringPickUp(0);
+  frontMogoRelease();
+  wait(500,msec);
+  drivePD(-10);
+  turnPD(-178);
+  drivePD(9.35);
+  drivePD(8.3);
+  frontMogoGetter();
+  wait(200,msec);
+  turnPD(-183);
+  drivePD(-22);
+  drivePD(-13);
+  backMogoClamp.close();
+  backMogoLift(800,1);
+  ringPickUp(1);
+  turnPD(-220);
+  drivePD(-9);
+  turnPD(-258);
+  drivePD(-6);
+  backMogoLift(550, 1);
+  backMogoClamp.open();
+  backMogoLift(700,1);
+  drivePD(15);
+  backMogoLift(0, 0);
+  turnPD(-139.2);
+  wait(500,msec);
+  drivePD(-16.5);
+  backMogoClamp.close();
+  backMogoLift(800, 0);
+  ringPickUp(1);
+  drivePD(-33);
+  wait(600,msec);
+  turnPD(-88);
+  ringPickUp(1);
+  drivePD(-19.2);
+  backMogoLift(500,1);
+  wait(600,msec);
+  backMogoClamp.open();
+  backMogo.rotateTo(600,deg,10,velocityUnits::pct,false);
+  drivePD(4);
+  drivePD(5.3);
+  turnPD(-190);
+  backMogoLift(0, 0);
+  ringPickUp(0);
+  drivePD(-15);
+  frontMogoRelease();
+  wait(300,msec);
+  drivePD(-10);
+  turnPD(-13);
+  drivePD(10.8);
+  frontMogoGetter();
+  drivePD(-14.4);
+  turnPD(68);
+  drivePD(-13);
+  drivePD(-10);
+  backMogoClamp.close();
+  backMogoLift(800,0);
+  turnPD(40);
+  ringPickUp(1);
+  drivePD(-56);
+  backMogoLift(520,1);
+  backMogoLift(400,1);
+  backMogoLift(520,1);
+  backMogoClamp.open();
+  drivePD(10);
+  turnPD(240.5);
+  backMogoLift(0,0);
+
 }
 
 // ............................................................................
@@ -590,7 +683,7 @@ void auton(int auton){
 
 void autonomous(void) {
   // ..........................................................................
-  auton(4);
+  auton(8);
   // ..........................................................................
 }
 
